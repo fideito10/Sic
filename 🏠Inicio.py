@@ -46,7 +46,7 @@ with col1:
     - **Back in Game:** Un espacio dedicado a la vuelta al juego, donde te explicamos de manera sencilla cómo los jugadores vuelven al juego luego de un contacto.  
     """)
 with col2:
-    st.image("Pages/assets/Sic.jpeg", width=180, caption="Club SIC")
+    st.image("assets/Sic.jpeg", width=180, caption="Club SIC")
 
 st.markdown("<h2 class='sub-header'>Estadísticas</h2>", unsafe_allow_html=True)
 st.info("⚽ SIC - Estadísticas de rendimiento")
