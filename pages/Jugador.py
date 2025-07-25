@@ -59,7 +59,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Título de la aplicación
-st.markdown("<h1 class='main-header'>BIG Report - Análisis de Retorno a la Actividad</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>📊 BIG Report – Análisis de Retorno Deportivo Individual</h1>", unsafe_allow_html=True)
 
 # Intenta usar una variable de entorno si está disponible
 try:
@@ -582,6 +582,25 @@ def normalizar_datos_atleta(df):
 
 def dibujar_cancha_rugby_con_eventos(df_eventos):
     # --- Guardar eventos en Supabase ---
+    # --- Clasificar intensidad de contacto ---
+    def clasificar_intensidad_contacto(evento):
+        if evento.get('tipo_evento') != 'Contact':
+            return None
+        conf = evento.get('confidence', 0) or 0
+        act = evento.get('active_percentage', 0) or 0
+        dur = evento.get('duration', 0) or 0
+        # Alto: todas altas
+        if conf >= 0.85 and act >= 70 and dur >= 1.5:
+            return 'Alto'
+        # Medio: dos medias o una alta
+        elif (conf >= 0.75 and act >= 50) or (dur >= 1.0 and conf >= 0.75) or (act >= 70 and conf >= 0.75):
+            return 'Medio'
+        else:
+            return 'Bajo'
+
+    df_eventos = df_eventos.copy()
+    df_eventos['intensidad_contacto'] = df_eventos.apply(clasificar_intensidad_contacto, axis=1)
+
     try:
         from supabase import create_client, Client
         import uuid
@@ -598,6 +617,8 @@ def dibujar_cancha_rugby_con_eventos(df_eventos):
                 "end_time": evento.get("end_time"),
                 "duration": evento.get("duration"),
                 "confidence": evento.get("confidence"),
+                "active_percentage": evento.get("active_percentage"),
+                "intensidad_contacto": evento.get("intensidad_contacto"),
                 "x_cancha": evento.get("x_cancha"),
                 "y_cancha": evento.get("y_cancha"),
             }).execute()
@@ -644,22 +665,33 @@ def dibujar_cancha_rugby_con_eventos(df_eventos):
     plt.title('Cancha de Rugby con Eventos', fontsize=16, pad=20, color='white')
     
     # --- Graficar eventos ---
+    # Colores para tipo de evento y para intensidad de contacto
     colores = {
         'Contact': 'red',
-        'Kick': 'yellow',
-        'Line': 'blue',
-        'Tackle': 'orange'
+    }
+    colores_intensidad = {
+        'Alto': 'red',
+        'Medio': 'orange',
+        'Bajo': 'yellow'
     }
     # Usar las coordenadas normalizadas
     for _, evento in df_eventos.iterrows():
         x = evento.get('x_cancha', None)
         y = evento.get('y_cancha', None)
         tipo = evento.get('tipo_evento', 'Evento')
+        intensidad = evento.get('intensidad_contacto', None)
         if x is not None and y is not None:
-            ax.plot(x, y, 'o', color=colores.get(tipo, 'white'), markersize=12, label=tipo, alpha=0.7)
-            ax.text(x, y+2, tipo, color=colores.get(tipo, 'white'), fontsize=9, ha='center')
-    handles = [plt.Line2D([0], [0], marker='o', color='w', label=tipo, markerfacecolor=col, markersize=10)
-               for tipo, col in colores.items()]
+            if tipo == 'Contact' and intensidad:
+                color = colores_intensidad.get(intensidad, 'white')
+                ax.plot(x, y, 'o', color=color, markersize=14, label=f"Contact-{intensidad}", alpha=0.8)
+                ax.text(x, y+2, f"{tipo} ({intensidad})", color=color, fontsize=9, ha='center')
+            else:
+                ax.plot(x, y, 'o', color=colores.get(tipo, 'white'), markersize=12, label=tipo, alpha=0.7)
+                ax.text(x, y+2, tipo, color=colores.get(tipo, 'white'), fontsize=9, ha='center')
+    # Leyenda combinada
+
+    handles = [plt.Line2D([0], [0], marker='o', color='w', label=f'Contact {nivel}', markerfacecolor=col, markersize=12)
+            for nivel, col in colores_intensidad.items()]
     ax.legend(handles=handles, loc='upper right')
     st.pyplot(fig)
  
@@ -670,10 +702,10 @@ def main():
     catapult = CatapultSelector(api_token)
     
     # Contenedor para el flujo de selección
-    st.markdown("<h2 class='sub-header'>Selección de Datos</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='sub-header'></h2>", unsafe_allow_html=True)
     
     # PASO 1: Seleccionar equipo
-    st.sidebar.markdown("<h2 class='sub-header'>Selección de Jugador</h2>", unsafe_allow_html=True)
+    st.sidebar.markdown("<h2 class='sub-header'>Información</h2>", unsafe_allow_html=True)
 
     # PASO 1: Seleccionar equipo
     st.sidebar.markdown("### 1. Seleccionar Equipo")
@@ -764,96 +796,139 @@ def main():
                 st.session_state['paso'] = 4
         # ...existing code...
 
+    # ...existing code...
     if 'paso' in st.session_state and st.session_state['paso'] >= 4:
-            st.sidebar.markdown("---")
-            st.sidebar.markdown("### 4. Back in Game")
-            if st.sidebar.button("Back in Game"):
-                # Obtener datos del atleta y actividad
-                atleta_info = next(
-                    (a for a in st.session_state.get('atletas', []) if a['id'] == st.session_state['atleta_id']),
-                    None
-                )
-                nombre_atleta = f"{atleta_info.get('first_name', '')} {atleta_info.get('last_name', '')}" if atleta_info else "Atleta seleccionado"
-                jersey = atleta_info.get('jersey', '') if atleta_info else ''
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 4. Back in Game")
+        if st.sidebar.button("Back in Game"):
+            # Obtener datos del atleta y actividad
+            atleta_info = next(
+                (a for a in st.session_state.get('atletas', []) if a['id'] == st.session_state['atleta_id']),
+                None
+            )
+            nombre_atleta = f"{atleta_info.get('first_name', '')} {atleta_info.get('last_name', '')}" if atleta_info else "Atleta seleccionado"
+            jersey = atleta_info.get('jersey', '') if atleta_info else ''
 
-                actividad_info = next(
-                    (a for a in st.session_state.get('actividades', []) if a['id'] == st.session_state['actividad_id']),
-                    {}
-                )
-                rival = actividad_info.get('opponent', actividad_info.get('team_name', ''))
-                tipo_sesion = actividad_info.get('type', actividad_info.get('name', 'Sesión'))
-                fecha = ""
-                if actividad_info.get('start_time'):
-                    try:
-                        fecha = datetime.fromtimestamp(actividad_info['start_time']).strftime("%d/%m/%Y")
-                    except:
-                        fecha = "Fecha desconocida"
-                duracion = actividad_info.get('duration', None)
-                if duracion is None and actividad_info.get('start_time') and actividad_info.get('end_time'):
-                    duracion = round((actividad_info['end_time'] - actividad_info['start_time']) / 60, 1)
-                elif duracion is not None:
-                    duracion = round(duracion / 60, 1)
-                else:
-                    duracion = "N/D"
+            actividad_info = next(
+                (a for a in st.session_state.get('actividades', []) if a['id'] == st.session_state['actividad_id']),
+                {}
+            )
+            rival = actividad_info.get('opponent', actividad_info.get('team_name', ''))
+            tipo_sesion = actividad_info.get('type', actividad_info.get('name', 'Sesión'))
+            fecha = ""
+            if actividad_info.get('start_time'):
+                try:
+                    fecha = datetime.fromtimestamp(actividad_info['start_time']).strftime("%d/%m/%Y")
+                except:
+                    fecha = "Fecha desconocida"
+            duracion = actividad_info.get('duration', None)
+            if duracion is None and actividad_info.get('start_time') and actividad_info.get('end_time'):
+                duracion = round((actividad_info['end_time'] - actividad_info['start_time']) / 60, 1)
+            elif duracion is not None:
+                duracion = round(duracion / 60, 1)
+            else:
+                duracion = "N/D"
 
-                # Título y resumen de actividad
-                st.markdown(f"""
-                <div style='border:2px solid #1E88E5; border-radius:12px; padding:18px; margin-bottom:18px; background:#F5F5F5;'>
-                    <span style='font-size:2rem; font-weight:700;'>🧾 BACK IN GAME REPORT</span><br>
-                    <span style='font-size:1.2rem;'><b>Jugador:</b> {nombre_atleta} <b>#{jersey}</b></span><br>
-                    <span style='font-size:1.2rem;'><b>Actividad:</b> {tipo_sesion} vs. {rival}</span><br>
-                    <span style='font-size:1.2rem;'><b>Fecha:</b> {fecha}</span><br>
-                    <span style='font-size:1.2rem;'><b>Duración de actividad:</b> {duracion} minutos</span>
-                </div>
-                """, unsafe_allow_html=True)
 
-                # Paso principal: obtener datos fusionados y calcular métricas
-                df_fusion = catapult.obtener_datos_fusionados(
-                    st.session_state['actividad_id'],
-                    st.session_state['atleta_id']
-                )
-                if df_fusion is not None and not df_fusion.empty:
-                    df_back = catapult.calcular_back_in_game_multi(df_fusion)
-                    # ...existing code...
-                    if 'resumen_metricas' in st.session_state and st.session_state['resumen_metricas']:
-                        st.markdown("<div style='text-align:center; font-size:1.1rem; font-weight:600;'>Resumen de métricas</div>", unsafe_allow_html=True)
-                        for metrica in st.session_state['resumen_metricas']:
-                            st.markdown(f"""
-                            <div style='border:2px solid #1E88E5; border-radius:12px; padding:18px; margin:12px 0; background:#E3F2FD; text-align:center;'>
-                                <span style='font-size:2rem; font-weight:700;'>Atleta: {metrica['Atleta']}</span><br>
-                                <span style='font-size:1.5rem;'><b>Total eventos BIG:</b> {metrica['Total eventos BIG']}</span><br>
-                                <span style='font-size:1.5rem;'><b>Tiempo medio entre eventos (min):</b> {metrica['Tiempo medio entre eventos (min)']}</span><br>
-                                <span style='font-size:1.5rem;'><b>Duración media por evento (min):</b> {metrica['Duración media por evento (min)']}</span><br>
-                                <span style='font-size:1.5rem;'><b>Carga total de actividad (min):</b> {metrica['Carga total de actividad (min)']}</span>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                    if df_back is not None and not df_back.empty:
-                        st.markdown("<hr>", unsafe_allow_html=True)
-                        st.markdown("<div style='text-align:center; font-size:1.3rem; font-weight:600;'>Cancha de Rugby con Eventos</div>", unsafe_allow_html=True)
-                        df_normalizado = normalizar_datos_atleta(df_back)
-                        dibujar_cancha_rugby_con_eventos(df_normalizado)
-                        # Mostrar el DataFrame debajo de la cancha
-                        cols_base = ['tipo_evento', 'end_time', 'start_time', 'duration_min', 'back_in_game_min', 'confidence']
-                        coords = ['start_x', 'start_y', 'end_x', 'end_y']
-                        cols = cols_base + [c for c in coords if c in df_back.columns]
-                        st.markdown("<div style='text-align:center; font-size:1.1rem; font-weight:600;'>Detalle de eventos</div>", unsafe_allow_html=True)
-                        st.dataframe(df_back[cols])
 
+            # Paso principal: obtener datos fusionados y calcular métricas
+            df_fusion = catapult.obtener_datos_fusionados(
+                st.session_state['actividad_id'],
+                st.session_state['atleta_id']
+            )
+
+            if df_fusion is not None and not df_fusion.empty:
+                df_back = catapult.calcular_back_in_game_multi(df_fusion)
+                if 'resumen_metricas' in st.session_state and st.session_state['resumen_metricas']:
+                    metrica = st.session_state['resumen_metricas'][0]
+                    # Tarjetas visuales en dos columnas
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"""
+                        <div style='border:2px solid #1E88E5; border-radius:12px; padding:18px; margin-bottom:18px; background:#F5F5F5;'>
+                            <span style='font-size:2rem; font-weight:700;'>📁 BACK IN GAME REPORT</span><br>
+                            <span style='font-size:1.2rem;'><b>Jugador:</b> {nombre_atleta} <b>#{jersey}</b></span><br>
+                            <span style='font-size:1.2rem;'><b>Actividad:</b> {tipo_sesion} vs. {rival}</span><br>
+                            <span style='font-size:1.2rem;'><b>Fecha:</b> {fecha}</span><br>
+                            <span style='font-size:1.2rem;'><b>Duración de actividad:</b> {duracion} minutos</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f"""
+                        <div style='border:2px solid #1E88E5; border-radius:12px; padding:18px; margin-bottom:18px; background:#F5F5F5;'>
+                            <span style='font-size:2rem; font-weight:700;'>📌 Resumen de métricas</span><br>
+                            <span style='font-size:1.2rem;'>🧮 <b>Total eventos BIG:</b> {metrica['Total eventos BIG']}</span><br>
+                            <span style='font-size:1.2rem;'>⏱️ <b>Tiempo entre eventos:</b> {metrica['Tiempo medio entre eventos (min)']} min</span><br>
+                            <span style='font-size:1.2rem;'>🔁 <b>Duración por evento:</b> {metrica['Duración media por evento (min)']} min</span><br>
+                            <span style='font-size:1.2rem;'>📦 <b>Carga total:</b> {metrica['Carga total de actividad (min)']} min</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    # ...visualización de cancha y eventos...
+      # ...existing code...
+           # ...existing code...
+            if df_back is not None and not df_back.empty:
+                st.markdown("<hr>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align:center; font-size:1.3rem; font-weight:600;'>Cancha de Rugby con Eventos</div>", unsafe_allow_html=True)
+                df_normalizado = normalizar_datos_atleta(df_back)
+                dibujar_cancha_rugby_con_eventos(df_normalizado)
+                # Enumerar los eventos
+                df_back = df_back.copy()
+                df_back['Evento #'] = range(1, len(df_back) + 1)
+
+                # Asignar emojis según tipo_evento e intensidad_contacto
+ # ...existing code...
+                def emoji_evento(row):
+                    if row['tipo_evento'] == 'Contact':
+                        intensidad = row.get('intensidad_contacto', None)
+                        if intensidad == 'Alto':
+                            return '🔴 Contact (Alto)'
+                        elif intensidad == 'Medio':
+                            return '🟠 Contact (Medio)'
+                        elif intensidad == 'Bajo':
+                            return '🟡 Contact (Bajo)'
+                        else:
+                            return '🔴 Contact'
+                    elif row['tipo_evento'] == 'Kick':
+                        return '🟢 Kick'
+                    elif row['tipo_evento'] == 'Line':
+                        return '🔵 Line'
+                    elif row['tipo_evento'] == 'Tackle':
+                        return '🟡 Tackle'
                     else:
-                        st.warning("No se pudieron calcular eventos 'Back in Game' para este atleta.")
-                else:
-                    st.warning("No se pudieron obtener eventos fusionados para este atleta.")
+                        return row['tipo_evento']
 
-                # Agregar contacto al final del sidebar
-            st.sidebar.markdown("---")
-            st.sidebar.markdown("""
+                df_back['tipo_evento'] = df_back.apply(emoji_evento, axis=1)
+    # ...existing code...
+
+                # Reordenar columnas para mostrar el número primero
+                cols_base = ['Evento #', 'tipo_evento', 'end_time', 'start_time', 'duration_min', 'back_in_game_min', 'confidence']
+                coords = ['start_x', 'start_y', 'end_x', 'end_y']
+                cols = cols_base + [c for c in coords if c in df_back.columns]
+                # Aplicar formato visual con pandas
+                styled_df = df_back[cols].style.format({
+                    'duration_min': '{:.2f}',
+                    'back_in_game_min': '{:.2f}',
+                    'confidence': '{:.2f}'
+                }).highlight_max('confidence', color='lightgreen')
+                st.markdown("<div style='text-align:center; font-size:1.1rem; font-weight:600;'>Detalle de eventos</div>", unsafe_allow_html=True)
+                st.dataframe(styled_df, use_container_width=True)
+            
+
+            
+            
+            else:
+                st.warning("No se pudieron obtener eventos fusionados para este atleta.")
+
+        # Agregar contacto al final del sidebar
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("""
             <div style='font-size:1.1rem; color:#0D47A1;'>
                 <b>Contacto:</b><br>
                 Juan Calvo<br>
                 <a href='mailto:calvoj550@gmail.com'>calvoj550@gmail.com</a>
             </div>
             """, unsafe_allow_html=True)
+# ...existing code...
 
 if __name__ == "__main__":
     main()

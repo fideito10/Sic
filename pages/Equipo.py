@@ -329,3 +329,4 @@ if not df_actividades.empty:
         st.warning("No se encontraron atletas para la actividad.")
 else:
     st.warning("No se encontraron actividades disponibles.")
+    
